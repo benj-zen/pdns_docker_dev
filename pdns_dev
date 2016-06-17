@@ -1,0 +1,209 @@
+#!/bin/bash
+PDNS_PATH_LOCATION="./data/internal/PDNS_PATH"
+
+function commit_container(){
+	docker commit $(docker ps -lq) $1
+}
+
+function remove_container(){
+	docker rm $(docker ps -lq)
+}
+
+function read_pdns_location(){
+	if [[ ! -e "$PDNS_PATH_LOCATION" ]]; then
+		PDNS_LOCATION=""
+		return 1
+	fi
+	PDNS_LOCATION=$(cat $PDNS_PATH_LOCATION)
+	PDNS_LOCATION=${PDNS_LOCATION%/}
+}
+
+function check_pdns_repo(){
+	if [[ ! -e "$PDNS_PATH_LOCATION" ]]; then
+		return 1
+	elif [[ ! -e "$PDNS_LOCATION/bootstrap" ]]; then
+		>&2 echo "Invalid pdns location: File 'bootstrap' not found!"
+		return 2
+	elif [[ ! -e "$PDNS_LOCATION/configure" ]]; then
+		>&2 echo "Invalid pdns location: File 'configure' not found!"
+		return 3
+	fi
+	return 0
+}
+
+function init(){
+	# Delete images created
+	docker images | grep pdns_ | grep -v pdns_base | awk '{ print $1 }' | xargs -r docker rmi >/dev/null 2>&1
+	# Delete the old base image
+	docker rmi "pdns_base" >/dev/null 2>&1
+	# Rebuild the base image
+	docker build -t pdns_base ./data/internal
+}
+
+function check_build_type(){
+	if [ "$1" == "server" ]; then
+		return 0
+	elif [ "$1" == "test" ]; then
+		return 0
+	else
+		echo "Usage: pdns_dev $2 {server|test}"
+		exit -1
+	fi
+}
+
+function get_module(){
+	if [ "$1" == "server" ]; then
+		if [ ! -z "$2" ]; then
+			module="$2"
+		else
+			module="gmysql"
+		fi
+	elif [ "$1" == "test" ]; then
+		module="gsqlite3"
+	fi
+	
+	if [[ ! -e "./data/backends/$module" ]]; then
+		echo "Directory 'data/backends/$module' not found!"
+		exit -1
+	elif [[ ! -e "./data/backends/$module/build/" ]]; then
+		echo "Directory 'data/backends/$module/build' not found!"
+		exit -1
+	elif [[ ! -e "./data/backends/$module/build/Dockerfile" ]]; then
+		echo "Dockerfile 'data/backends/$module/build/Dockerfile' not found!"
+		exit -1
+	elif [[ ! -e "./data/backends/$module/conf" ]]; then
+		echo "Directory 'data/backends/$module/conf' not found!"
+		exit -1
+	fi
+
+	echo $module
+}
+
+function get_image(){
+	if [ "$1" == "server" ]; then
+		echo "pdns_server_$(get_module $1 $2)"
+	elif [ "$1" == "test" ]; then
+		echo "pdns_test"
+	fi
+}
+
+function configure(){
+	check_build_type "$1" "configure"
+
+	module=$(get_module $1 $2)
+	image=$(get_image $1 $2)
+
+	# Cleanup
+	docker rmi $image >/dev/null 2>&1
+	docker rmi $(docker images -q -f dangling=true) >/dev/null 2>&1
+
+	# Check if commands-file exists
+	if [[ -e "data/backends/$module/commands" ]]; then
+		# Fill additional variable with given commands e.g. apt-get install whatever-db
+		additional="$(cat data/backends/$module/commands)"
+		additional="$additional;"
+	fi
+
+	# Execute "additional" commands and bootstrap/configure for pdns
+	docker run -v "$PDNS_LOCATION:/usr/src/pdns/" pdns_base /bin/bash -c "$additional ./bootstrap; ./configure --with-modules=\"$module\" --without-lua"  
+	
+	
+	commit_container $image
+	remove_container
+}
+
+function make_pdns(){
+	check_build_type "$1" "make"
+
+	module=$(get_module $1 $2)
+	image=$(get_image $1 $2)
+
+	if [ "$1" == "server" ]; then
+		docker run --name "pdns_make" $image /bin/bash -c "mkdir -p /etc/powerdns/pdns.d/; rm -f /etc/powerdns/pdns.d/*.conf"
+		docker cp data/internal/pdns.conf pdns_make:/etc/powerdns/
+		for conf_file in "data/backends/$module/conf/*.conf"; do
+			docker cp $conf_file pdns_make:/etc/powerdns/pdns.d/
+		done
+		
+		commit_container $image
+		remove_container
+	fi
+
+	docker run -v "$PDNS_LOCATION:/usr/src/pdns/" $image /bin/bash -c "make -j5; make install"
+	
+	commit_container $image
+	remove_container
+}
+
+function run_pdns(){
+	check_build_type "$1" "run"
+
+	module=$(get_module $1 $2)
+
+	if [ "$1" == "server" ]; then
+		cd data/internal/compose
+
+		echo "Starting server with backend '$module'..."
+
+		# Link the selected backend
+		rm -f pdns_backend
+		ln -s "../../backends/$module/build/" pdns_backend
+
+		# Set the environment variable for docker-compose
+		export MODULE=$module
+
+		# Check if backend provides an environment file and link it
+		rm -f environment
+		if [[ -e "../../backends/$module/environment" ]]; then
+			echo "Linking environment file."
+			ln "../../backends/$module/environment" environment
+		else
+			echo "No environment file provided."
+			echo "" > environment
+		fi
+
+		# Substitutes the enviroment variables in template.yml and writes to docker-compose.yml
+		# The .yml is generated for each backend, so the databases won't always be rebuilt
+		envsubst < "template.yml" > "docker-compose.yml"
+
+		# Start the containers
+		docker-compose up
+		# Remove the server container (otherwise the image can't be removed afterwards)
+		docker-compose rm -f pdns
+	elif [ "$1" == "test" ]; then
+		docker run -v "$PDNS_LOCATION:/usr/src/pdns/" pdns_test /bin/bash -c "cd regression-tests.api; ./runtests authoritative"
+		remove_container
+	fi
+}
+
+function terminal_pdns(){
+	docker exec -it compose_pdns_1 /bin/bash 
+}
+
+read_pdns_location
+
+while ! check_pdns_repo; do
+	read -e -p "Please enter the path to your pdns repository: " path
+	echo $path > $PDNS_PATH_LOCATION
+	read_pdns_location
+done
+
+if [ "$1" == "init" ]; then
+	init
+elif [ "$1" == "configure" ]; then
+	configure $2 $3
+elif [ "$1" == "make" ]; then
+	make_pdns $2 $3
+elif [ "$1" == "run" ]; then
+	run_pdns $2 $3
+elif [ "$1" == "terminal" ]; then
+	terminal_pdns
+else
+	echo "Usage: pdns_dev [Command] [Type] [Backend]" && echo
+	echo "Commands:"
+	echo "  init        Inits the base image with installed dependencies."
+	echo "  configure   Configures the compiler for the given build type. Types: {server|test}"
+	echo "  make        Compiles pdns with the given build type. Types: {server|test}"
+	echo "  run         Runs pdns with the given build type. Types: {server|test}"
+	echo "  terminal    Opens a terminal in the active \"pdns_dev run server\""
+fi

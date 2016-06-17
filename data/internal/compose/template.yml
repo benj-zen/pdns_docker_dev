@@ -1,0 +1,16 @@
+version: '2'
+services:
+  db_${MODULE}:
+    build: pdns_backend
+    image: pdns_db_${MODULE}
+    env_file: environment
+
+  pdns:
+    image: pdns_server_${MODULE}
+    command: ["pdns_server","--daemon=no","--config-dir=/etc/powerdns/"]
+    links:
+     - db_${MODULE}:db
+    ports:
+     - "5300:53"
+     - "5300:53/udp"
+     - "8081:8081"
