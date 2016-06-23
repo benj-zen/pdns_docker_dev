@@ -37,7 +37,7 @@ Compiles the pdns source by calling 'make' and 'make install'. Furthermore it co
 ```
 ./pdns_dev run {type} [backend]
 ```
-Run the compiled pdns. When running for the first time, you have to wait for the backend to initalize and become available, be patient ;). This command uses docker-compose and optionally sets the environment variables given by the 'environment' file for the backend. If `type=test` this runs the api-tests.
+Run the compiled pdns. When running for the first time, you have to wait for the backend to initalize and become available, be patient ;). This command uses docker-compose and optionally sets the environment variables given by the 'environment' file for the backend. If `type=test` this runs the api-tests. The server will be accessible on port 5300. You can change the port by editing the template file located at data/internal/compose/.
 
 #### 5. Terminal (Optional)
 ```
