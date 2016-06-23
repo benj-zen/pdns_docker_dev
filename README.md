@@ -13,6 +13,8 @@ This repository gives you the ability to compile and run powerdns. It takes care
 
 *More information about the 'type' and 'backend' parameters can be found [at the bottom](#parameters).*
 
+*The script has to be executed by a user contained in the 'docker' group. By default it's only root, so you would need to run it with sudo. More information can be found [here](http://askubuntu.com/questions/477551/how-can-i-use-docker-without-sudo).*
+
 #### 1. Init
 ```
 ./pdns_dev init
