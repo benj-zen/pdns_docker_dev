@@ -58,23 +58,24 @@ function get_module(){
 		else
 			module="gmysql"
 		fi
+		if [[ ! -e "./data/backends/$module" ]]; then
+			echo "Directory 'data/backends/$module' not found!"
+			exit -1
+		elif [[ ! -e "./data/backends/$module/build/" ]]; then
+			echo "Directory 'data/backends/$module/build' not found!"
+			exit -1
+		elif [[ ! -e "./data/backends/$module/build/Dockerfile" ]]; then
+			echo "Dockerfile 'data/backends/$module/build/Dockerfile' not found!"
+			exit -1
+		elif [[ ! -e "./data/backends/$module/conf" ]]; then
+			echo "Directory 'data/backends/$module/conf' not found!"
+			exit -1
+		fi
 	elif [ "$1" == "test" ]; then
 		module="gsqlite3"
 	fi
 	
-	if [[ ! -e "./data/backends/$module" ]]; then
-		echo "Directory 'data/backends/$module' not found!"
-		exit -1
-	elif [[ ! -e "./data/backends/$module/build/" ]]; then
-		echo "Directory 'data/backends/$module/build' not found!"
-		exit -1
-	elif [[ ! -e "./data/backends/$module/build/Dockerfile" ]]; then
-		echo "Dockerfile 'data/backends/$module/build/Dockerfile' not found!"
-		exit -1
-	elif [[ ! -e "./data/backends/$module/conf" ]]; then
-		echo "Directory 'data/backends/$module/conf' not found!"
-		exit -1
-	fi
+
 
 	echo $module
 }
@@ -97,11 +98,13 @@ function configure(){
 	docker rmi $image >/dev/null 2>&1
 	docker rmi $(docker images -q -f dangling=true) >/dev/null 2>&1
 
-	# Check if commands-file exists
-	if [[ -e "data/backends/$module/commands" ]]; then
-		# Fill additional variable with given commands e.g. apt-get install whatever-db
-		additional="$(cat data/backends/$module/commands)"
-		additional="$additional;"
+	if [ "$1" == "server" ]; then
+		# Check if commands-file exists
+		if [[ -e "data/backends/$module/commands" ]]; then
+			# Fill additional variable with given commands e.g. apt-get install whatever-db
+			additional="$(cat data/backends/$module/commands)"
+			additional="$additional;"
+		fi
 	fi
 
 	# Execute "additional" commands and bootstrap/configure for pdns
