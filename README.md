@@ -1,5 +1,5 @@
 # Docker wrapper for PowerDNS development
-This repository gives you the ability to compile and run powerdns. It takes care of installing dependencies for you and supports different configurations.
+This repository gives you the ability to compile and run powerdns. It takes care of installing dependencies for you and supports different configurations. It builds one image per backend configuration based on the same base-image containing the general dependencies. Furthermore images are created for each individual backend e.g. MySQL database. There is also a mode for running the API-Tests. Regression-Tests will be added in the future.
 
 ## Prerequisites
 * Console supporting bash
@@ -13,6 +13,8 @@ This repository gives you the ability to compile and run powerdns. It takes care
 
 *More information about the 'type' and 'backend' parameters can be found [at the bottom](#parameters).*
 
+*The script has to be executed by a user contained in the 'docker' group. By default it's only root, so you would need to run it with sudo. More information can be found [here](http://askubuntu.com/questions/477551/how-can-i-use-docker-without-sudo).*
+
 #### 1. Init
 ```
 ./pdns_dev init
@@ -21,21 +23,21 @@ Removes all server images (backend images are kept) and initializes the base ima
 
 #### 2. Configure
 ```
-./pdns_dev configure type [backend]
+./pdns_dev configure {type} [backend]
 ```
 Initalizes the docker image for the selected type and backend. 'configure' runs the commands specified by the commands-file of the selected backend (if existing). Afterwards it executes 'bootstrap' and 'configure' for the pdns source. The command may also be used to perform a clean build.
 
 #### 3. Make
 ```
-./pdns_dev make type [backend]
+./pdns_dev make {type} [backend]
 ```
 Compiles the pdns source by calling 'make' and 'make install'. Furthermore it copies the current .conf-files to the image. Because this commands commits the changes to the respective docker image, make sure to occasionally perform a clean build with 'configure', so the image history doesn't become bloated and thereby slow.
 
 #### 4. Run
 ```
-./pdns_dev run type [backend]
+./pdns_dev run {type} [backend]
 ```
-Run the compiled pdns. When running for the first time, you have to wait for the backend to initalize and become available, be patient ;). This command uses docker-compose and optionally sets the environment variables given by the 'environment' file for the backend. If `type=test` this runs the api-tests.
+Run the compiled pdns. When running for the first time, you have to wait for the backend to initalize and become available, be patient ;). This command uses docker-compose and optionally sets the environment variables given by the 'environment' file for the backend. If `type=test` this runs the api-tests. The server will be accessible on port 5300. You can change the port by editing the template file located at data/internal/compose/.
 
 #### 5. Terminal (Optional)
 ```
