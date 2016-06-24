@@ -108,7 +108,7 @@ function configure(){
 	fi
 
 	# Execute "additional" commands and bootstrap/configure for pdns
-	docker run -v "$PDNS_LOCATION:/usr/src/pdns/" pdns_base /bin/bash -c "$additional ./bootstrap; ./configure --with-modules=\"$module\" --without-lua"  
+	docker run -v "$PDNS_LOCATION:/usr/src/pdns/" pdns_base /bin/bash -c "$additional cd /usr/src/pdns/; ./bootstrap; ./configure --with-modules=\"$module\" --without-lua"  
 	
 	
 	commit_container $image
